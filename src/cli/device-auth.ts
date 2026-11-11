@@ -3,6 +3,7 @@
  * authorization flow (client `kaneo-cli`, allowed by default).
  *
  *   KANEO_API_URL=https://yourdomain.com/api node src/cli/device-auth.ts ./secrets/kaneo_admin_token
+ *   KANEO_API_URL=http://kaneo:5173/api node src/cli/device-auth.ts --env   # paste into Portainer
  *
  * The approving account needs `users:read` and `workspaces:manage` — in practice
  * an instance administrator. Re-run only when the listener has been offline for
@@ -110,7 +111,10 @@ async function main(): Promise<void> {
     },
   });
 
-  if (outPath) {
+  if (outPath === "--env") {
+    // For pasting into a Portainer stack's environment variables.
+    console.log(`\nKANEO_ADMIN_TOKEN=${token}\n`);
+  } else if (outPath) {
     writeFileSync(outPath, `${token}\n`, { mode: 0o600 });
     console.log(`Token written to ${outPath} (mode 600).`);
   } else {

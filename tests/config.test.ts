@@ -28,9 +28,8 @@ test("reports every problem at once", () => {
     () => loadConfig({ LOG_LEVEL: "loud" }),
     (error: unknown) => {
       assert.ok(error instanceof ConfigError);
-      assert.equal(error.problems.length, 4, error.problems.join(" | "));
+      assert.equal(error.problems.length, 3, error.problems.join(" | "));
       assert.match(error.message, /KANEO_WORKSPACE_ID/);
-      assert.match(error.message, /KANEO_ADMIN_TOKEN_FILE/);
       assert.match(error.message, /DATABASE_URL/);
       assert.match(error.message, /LOG_LEVEL/);
       return true;
@@ -49,6 +48,11 @@ test("reads the token from a file when no inline value is set", () => {
   // Kaneo convention: the inline variable wins when both are set.
   const inline = loadConfig({ ...baseEnv, KANEO_ADMIN_TOKEN_FILE: file });
   assert.equal(inline.kaneo.token, "tok");
+});
+
+test("a missing token is allowed (the sidecar can start before device-auth)", () => {
+  const config = loadConfig({ ...baseEnv, KANEO_ADMIN_TOKEN: "" });
+  assert.equal(config.kaneo.token, "");
 });
 
 test("an empty token file is a configuration error", () => {

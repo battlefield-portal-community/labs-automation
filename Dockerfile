@@ -4,6 +4,11 @@ FROM node:24-alpine
 
 WORKDIR /app
 
+# Links the GHCR package to the repository (package settings → "Connect repository").
+LABEL org.opencontainers.image.source="https://github.com/battlefield-portal-community/labs-automation" \
+      org.opencontainers.image.description="Sidecar image for Kaneo automations" \
+      org.opencontainers.image.licenses="MIT"
+
 ENV NODE_ENV=production \
     HEALTH_PORT=8080
 

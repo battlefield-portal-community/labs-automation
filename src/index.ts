@@ -34,6 +34,13 @@ async function main(): Promise<void> {
     logger,
   });
 
+  if (!config.kaneo.token) {
+    logger.warn(
+      "no admin token configured — automations will fail with 401 until one is set (run `device-auth`, then restart)",
+      { hint: "KANEO_ADMIN_TOKEN or KANEO_ADMIN_TOKEN_FILE" },
+    );
+  }
+
   logger.info("starting", {
     automations: config.automations,
     apiUrl: config.kaneo.apiUrl,

@@ -45,6 +45,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const workspaceId = (env.KANEO_WORKSPACE_ID ?? "").trim();
   if (!workspaceId) problems.push("KANEO_WORKSPACE_ID is required");
 
+  // The token is deliberately *not* fatal: a stack deployed from Portainer starts before anyone
+  // has run device-auth. Without a token the automations report unhealthy and every API call
+  // returns 401, which is visible in /healthz and in the logs.
   const token = readToken(env, problems);
 
   const reconcileMinutes = readNumber(env.RECONCILE_INTERVAL_MIN, 10, "RECONCILE_INTERVAL_MIN", problems, {
@@ -86,10 +89,7 @@ function readToken(env: NodeJS.ProcessEnv, problems: string[]): string {
   if (inline) return inline;
 
   const file = (env.KANEO_ADMIN_TOKEN_FILE ?? "").trim();
-  if (!file) {
-    problems.push("set KANEO_ADMIN_TOKEN_FILE (preferred) or KANEO_ADMIN_TOKEN; mint one with `npm run device-auth`");
-    return "";
-  }
+  if (!file) return "";
   try {
     const value = readFileSync(file, "utf8").trim();
     if (!value) problems.push(`KANEO_ADMIN_TOKEN_FILE (${file}) is empty`);

@@ -1,38 +1,67 @@
-# Service definition for the automation sidecar.
+# Portainer-friendly service definition.
 #
-# Merge this into the compose file that already runs Kaneo (paste the `automations:`
-# block into its `services:`), or use it as-is from the same directory if your Kaneo
-# stack uses the names `kaneo` and `postgres`.
+# Two ways to use it:
 #
-#   docker build -t kaneo-labs-automation:0.1.0 .
-#   docker compose run --rm automations node src/cli/migrate.ts
-#   docker compose up -d automations
+#   A. Add to the stack that already runs Kaneo (recommended) — paste the
+#      `automations:` block into that stack's compose editor, then set the
+#      variables in the stack's "Environment variables" section.
+#      Service names `kaneo` and `postgres` resolve automatically.
+#
+#   B. Separate stack — uncomment `networks:` below and point it at the network
+#      your Kaneo stack created (`docker network ls` → e.g. `kaneo_default`).
+#      Use the same values for KANEO_API_URL and DATABASE_URL.
+#
+# The image is built by .github/workflows/build.yml and published to GHCR, so
+# Portainer only pulls: no build context, no git clone, no npm access on the host.
+# See docs/portainer.md for private-registry credentials and tag pinning.
 
 services:
   automations:
-    # Build locally, or push the image and pin a digest.
-    build: .
-    image: kaneo-labs-automation:0.1.0
+    # CI-built image: `latest` follows main, `sha-<short>` pins a commit,
+    # `v0.1.0` pins a release. Private package? Add registry credentials in
+    # Portainer first (docs/portainer.md §2).
+    image: ghcr.io/battlefield-portal-community/labs-automation:latest
+    # Local development only — `docker compose up -d --build automations`:
+    # build: .
+    container_name: kaneo-automation
     restart: unless-stopped
 
     environment:
       AUTOMATIONS: ${AUTOMATIONS:-auto-join}
+
+      # Inside the stack: the bundled Kaneo image serves the API under /api.
+      # Separate stack: same value, provided both containers share a network.
       KANEO_API_URL: ${KANEO_API_URL:-http://kaneo:5173/api}
-      KANEO_WORKSPACE_ID: ${KANEO_WORKSPACE_ID:?set KANEO_WORKSPACE_ID (see README)}
+
+      # Set in the Portainer stack environment (see README).
+      KANEO_WORKSPACE_ID: ${KANEO_WORKSPACE_ID:?set KANEO_WORKSPACE_ID in the stack environment}
       KANEO_WORKSPACE_ROLE: ${KANEO_WORKSPACE_ROLE:-member}
-      KANEO_ADMIN_TOKEN_FILE: /run/secrets/kaneo_admin_token
-      DATABASE_URL: postgres://${POSTGRES_USER:-kaneo}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-kaneo}
+
+      # Paste here, or set as a stack environment variable:
+      #   console: node src/cli/device-auth.ts --env
+      KANEO_ADMIN_TOKEN: ${KANEO_ADMIN_TOKEN:-}
+      # Or mount the token instead of passing it as an environment variable
+      # (create the file on the Docker host first, chmod 600):
+      # KANEO_ADMIN_TOKEN_FILE: /run/secrets/kaneo_admin_token
+
+      # Explicit on purpose: nested defaults are not interpolated reliably.
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in the stack environment, e.g. postgres://kaneo:pass@postgres:5432/kaneo}
+
+      # Applying sql/ at boot means no separate one-off command in Portainer.
+      # Set false and run `node src/cli/migrate.ts` in the container console if
+      # you prefer migrations to be an explicit step.
+      MIGRATE_ON_START: ${MIGRATE_ON_START:-true}
+
       RECONCILE_INTERVAL_MIN: ${RECONCILE_INTERVAL_MIN:-10}
       SKIP_INSTANCE_ADMINS: ${SKIP_INSTANCE_ADMINS:-false}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       HEALTH_PORT: "8080"
 
-    volumes:
-      # Written by: docker run ... node src/cli/device-auth.ts /secrets/kaneo_admin_token
-      - ./secrets/kaneo_admin_token:/run/secrets/kaneo_admin_token:ro
+    # volumes:
+    #   - /opt/kaneo-automation/secrets/kaneo_admin_token:/run/secrets/kaneo_admin_token:ro
 
-    # The healthcheck in the image reads HEALTH_PORT, so an expired token turns
-    # the container unhealthy instead of failing silently.
+    # The image healthcheck reads HEALTH_PORT, so Portainer shows the container
+    # as unhealthy when the session token is missing or expired.
     healthcheck:
       test: ["CMD-SHELL", 'wget -q -O - "http://127.0.0.1:$${HEALTH_PORT:-8080}/healthz" >/dev/null 2>&1 || exit 1']
       interval: 60s
@@ -40,6 +69,16 @@ services:
       start_period: 20s
       retries: 3
 
-    depends_on:
-      postgres:
-        condition: service_healthy
+    # Same stack as Kaneo: this keeps the ordering deterministic. Remove it in a
+    # separate stack — the sidecar just retries until the database answers.
+    # depends_on:
+    #   postgres:
+    #     condition: service_healthy
+
+    # networks:
+    #   - kaneo
+
+# networks:
+#   kaneo:
+#     external: true
+#     name: kaneo_default

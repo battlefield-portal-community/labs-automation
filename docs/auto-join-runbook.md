@@ -42,7 +42,7 @@ Why this shape, and why not the obvious alternatives:
 | `src/cli/device-auth.ts` | Device-authorization helper that mints the session token |
 | `Dockerfile`, `package.json` | The image (`pg` is the only runtime dependency) |
 | `compose.yml` | Service definition with healthcheck |
-| `tests/*.test.ts` | Unit + contract tests (35 assertions, `npm test`, no Postgres) |
+| `tests/*.test.ts` | Unit + contract tests (36 assertions, `npm test`, no Postgres) |
 | `tests/psql/verify-sql.sh` | The SQL against a real Postgres, throwaway database (11 assertions) |
 | `tests/psql/integration.sh` | End-to-end: real Postgres + migration + hub + real `pg` + mock API |
 
@@ -55,12 +55,15 @@ docker compose exec postgres psql -U kaneo -d kaneo -c 'SELECT id, name, archive
 # 2. Mint the token (approve in the browser as an account with users:read + workspaces:manage)
 KANEO_API_URL=https://yourdomain.com/api npm run device-auth -- ./secrets/kaneo_admin_token
 chmod 600 ./secrets/kaneo_admin_token
+# Portainer: run this in the container console instead, then paste the line into
+# the stack's environment variables:
+#   KANEO_API_URL=http://kaneo:5173/api node src/cli/device-auth.ts --env
 
 # 3. Install the trigger (re-runnable; also re-run after a major upgrade)
 docker compose run --rm automations node src/cli/migrate.ts
 
 # 4. Add KANEO_WORKSPACE_ID to .env, merge docker-compose.fragment.yml, then:
-docker compose up -d --build automations
+docker compose pull automations && docker compose up -d automations
 
 # 5. Verify
 curl -s localhost:8080/healthz | jq   # {healthy:true, listening:true, authOk:true, ...}
@@ -77,7 +80,7 @@ Then sign in with a fresh GitHub account: the workspace should appear within a s
 | Variable | Default | Notes |
 | - | - | - |
 | `KANEO_WORKSPACE_ID` | — | required |
-| `KANEO_ADMIN_TOKEN` / `KANEO_ADMIN_TOKEN_FILE` | — | required; pass the file, not the value |
+| `KANEO_ADMIN_TOKEN` / `KANEO_ADMIN_TOKEN_FILE` | — | needed for any API call; a missing token is not fatal, the automation just reports unhealthy |
 | `KANEO_API_URL` | `http://kaneo:5173/api` | bundled image serves the API under `/api`; separate API → `http://api:1337` |
 | `KANEO_WORKSPACE_ROLE` | `member` | must be an assignable role (`viewer`/`member`/`admin` or a workspace custom role) |
 | `RECONCILE_INTERVAL_MIN` | `10` | keep well under the session lifetime |
@@ -107,7 +110,7 @@ All three run against a throwaway container database and never touch Kaneo data:
 ```bash
 docker run --rm -d --name kaneo-pgtest -e POSTGRES_USER=kaneo -e POSTGRES_PASSWORD=test \
   -e POSTGRES_DB=kaneo -p 127.0.0.1:55432:5432 postgres:16-alpine
-npm test                                  # 35/35, no database needed
+npm test                                  # 36/36, no database needed
 export PGPASSWORD=test PGHOST=127.0.0.1 PGPORT=55432 PGUSER=kaneo
 sh tests/psql/verify-sql.sh               # 11/11
 sh tests/psql/integration.sh              # end-to-end
