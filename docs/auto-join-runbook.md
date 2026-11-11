@@ -66,7 +66,7 @@ docker compose run --rm automations node src/cli/migrate.ts
 docker compose pull automations && docker compose up -d automations
 
 # 5. Verify
-curl -s localhost:8080/healthz | jq   # {healthy:true, listening:true, authOk:true, ...}
+curl -s 127.0.0.1:8080/healthz | jq   # {healthy:true, listening:true, authOk:true, ...}
 docker compose exec -T postgres psql -U kaneo -d kaneo -c \
   "SELECT pg_notify('kaneo_new_user', json_build_object('id', u.id, 'email', u.email)::text)
    FROM \"user\" u ORDER BY created_at DESC LIMIT 1;"

@@ -26,6 +26,14 @@ export function createAutoJoinAutomation(deps: AutoJoinDeps = {}): Automation {
   };
   let authOk = true;
   let lastReconcileAt: string | null = null;
+  let lastError: string | null = null;
+  let lastFailureAt: string | null = null;
+
+  const noteFailure = (message: string) => {
+    counters.failures++;
+    lastError = message;
+    lastFailureAt = new Date().toISOString();
+  };
 
   const status = (): AutomationStatus => {
     const listening = listener?.state().connected ?? false;
@@ -37,6 +45,8 @@ export function createAutoJoinAutomation(deps: AutoJoinDeps = {}): Automation {
         authOk,
         ...counters,
         lastReconcileAt,
+        lastError,
+        lastFailureAt,
         workspaceId: context?.config.kaneo.workspaceId ?? null,
         role: context?.config.kaneo.workspaceRole ?? null,
       },
@@ -51,10 +61,13 @@ export function createAutoJoinAutomation(deps: AutoJoinDeps = {}): Automation {
   const markAuthOk = () => {
     if (!authOk) requireContext().logger.info("auth recovered");
     authOk = true;
+    // `failures` is cumulative for the process lifetime; `lastError` is the
+    // current signal, cleared by the next success.
+    lastError = null;
   };
 
   const handleError = (error: unknown) => {
-    counters.failures++;
+    noteFailure(errorMessage(error));
     if (error instanceof KaneoAuthError) {
       authOk = false;
       requireContext().logger.error("auth rejected — mint a new token with `npm run device-auth`", {
@@ -113,7 +126,7 @@ export function createAutoJoinAutomation(deps: AutoJoinDeps = {}): Automation {
       markAuthOk();
       logger.info("reconcile done", { seen, skipped, added, members: members.size });
     } catch (error) {
-      counters.failures++;
+      noteFailure(errorMessage(error));
       if (error instanceof KaneoAuthError) {
         authOk = false;
         logger.error("reconcile: auth rejected — mint a new token with `npm run device-auth`", {

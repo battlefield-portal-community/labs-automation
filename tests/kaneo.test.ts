@@ -95,6 +95,30 @@ test("an unexpected users payload is an error, not an empty page", async () => {
   await assert.rejects(() => client(fetchImpl).listUsers(1, 100), /unexpected response shape/);
 });
 
+test("a network failure names the cause and the host", async () => {
+  const fetchImpl = (async () => {
+    const error = new TypeError("fetch failed");
+    (error as { cause?: unknown }).cause = {
+      code: "ENOTFOUND",
+      message: "getaddrinfo ENOTFOUND kaneo",
+      hostname: "kaneo",
+      port: 5173,
+    };
+    throw error;
+  }) as typeof fetch;
+
+  await assert.rejects(
+    () => client(fetchImpl).listWorkspaceMemberIds("ws1"),
+    (error: unknown) => {
+      const message = (error as Error).message;
+      assert.match(message, /cannot reach Kaneo at https:\/\/kaneo\.test\/api/);
+      assert.match(message, /ENOTFOUND/);
+      assert.match(message, /kaneo:5173/);
+      return true;
+    },
+  );
+});
+
 test("the api url trailing slash does not double up", async () => {
   const { fetchImpl, calls } = stubFetch(() => json(200, []));
   await client(fetchImpl).listWorkspaceMemberIds("ws1");

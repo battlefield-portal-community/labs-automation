@@ -171,6 +171,40 @@ test("a rejected session turns the automation unhealthy", async () => {
   const status = automation.status();
   assert.equal(status.detail.authOk, false);
   assert.equal(status.healthy, false);
+  assert.match(String(status.detail.lastError), /session expired/);
+  assert.ok(status.detail.lastFailureAt);
+  await automation.stop();
+});
+
+test("a later success clears lastError but keeps the failure count", async () => {
+  let fail = true;
+  const client = {
+    async listWorkspaceMemberIds() {
+      if (fail) throw new KaneoAuthError(401, "session expired");
+      return new Set<string>();
+    },
+    async listUsers() {
+      return { users: [], total: 0 };
+    },
+    async addWorkspaceMember() {
+      return "added" as const;
+    },
+  } as unknown as KaneoAdminClient;
+
+  const listener = captureListener();
+  const automation = createAutoJoinAutomation({ startListener: listener.startListener });
+  automation.start({ config: testConfig(), kaneo: client, logger: silentLogger, database: testConfig().database });
+  await tick(30);
+  assert.ok(automation.status().detail.lastError);
+
+  fail = false;
+  listener.emit('{"id":"u9"}');
+  await tick(30);
+
+  const status = automation.status();
+  assert.equal(status.detail.lastError, null);
+  assert.equal(Number(status.detail.failures) >= 1, true);
+  assert.equal(status.detail.authOk, true);
   await automation.stop();
 });
 

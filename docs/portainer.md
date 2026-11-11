@@ -100,6 +100,30 @@ Portainer → stack → **Environment variables** → *Add environment variable*
 value makes Portainer refuse the deploy with that message instead of starting a crash-looping
 container.
 
+As `k=v` lines, for a bulk paste (first deploy — no token yet):
+
+```env
+KANEO_WORKSPACE_ID=<workspace-id>
+DATABASE_URL=postgres://kaneo:<password>@postgres:5432/kaneo
+KANEO_API_URL=http://kaneo:5173/api
+KANEO_WORKSPACE_ROLE=member
+MIGRATE_ON_START=true
+RECONCILE_INTERVAL_MIN=10
+SKIP_INSTANCE_ADMINS=false
+LOG_LEVEL=info
+AUTOMATIONS=auto-join
+```
+
+Then add one more line after §6 and update the stack:
+
+```env
+KANEO_ADMIN_TOKEN=<token printed by device-auth --env>
+```
+
+If the database password contains `@ : / ? # &` or spaces, percent-encode it in `DATABASE_URL`
+(`@` → `%40`, `/` → `%2F`, `#` → `%23`) or the URL will be parsed wrongly. `HEALTH_PORT` is fixed in
+the compose file (`8080`), so it needs no stack variable.
+
 Optional, already defaulted in the compose file: `KANEO_WORKSPACE_ROLE=member`,
 `MIGRATE_ON_START=true`, `RECONCILE_INTERVAL_MIN=10`, `SKIP_INSTANCE_ADMINS=false`,
 `LOG_LEVEL=info`, `AUTOMATIONS=auto-join`.
@@ -139,14 +163,17 @@ container health column will tell you.
 | - | - |
 | Container list | `kaneo-automation` is **healthy** |
 | Logs | `listening {"channel":"kaneo_new_user"}` then `reconcile done` with a `members` count |
-| Console → `wget -qO- localhost:8080/status` | `healthy:true`, `authOk:true`, `added` growing |
+| Console → `wget -qO- 127.0.0.1:8080/status` | `healthy:true`, `authOk:true`, `added` growing |
 | Sign in with a fresh GitHub account | the workspace appears within a second or two |
+
+> Use `127.0.0.1`, not `localhost`: busybox `wget` resolves `localhost` to `::1` first, and older
+> builds only listened on IPv4. Current images bind dual-stack, but `127.0.0.1` always works.
 
 Console one-liners:
 
 ```sh
 node src/cli/migrate.ts                       # apply sql/ by hand (MIGRATE_ON_START=false)
-wget -qO- localhost:8080/status               # full automation state
+wget -qO- 127.0.0.1:8080/status               # full automation state
 ```
 
 ## 8. Platform and registry notes
@@ -182,7 +209,9 @@ A CI failure blocks the image (the `image` job needs the `test` job), so a broke
 | Container exits, log ends with `configuration {"problems":[...]}` | env var missing/invalid — all problems listed | fix names in the stack environment, update |
 | Healthy, but `authOk:false` and `401` in logs | no token, expired token, or session revoked | §6, then update the stack |
 | `listen failed` repeating | `DATABASE_URL` wrong, or containers on different networks | fix credentials / join Kaneo's network (§3 Option B) |
+| `reconcile failed … cannot reach Kaneo at http://kaneo:5173/api: ENOTFOUND at kaneo:5173` | the sidecar cannot resolve or connect to the Kaneo service: different network, or a different service name | `docker inspect <automation> --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{$v.Aliases}}{{"\n"}}{{end}}'` and compare with the Kaneo container; either add both services to one stack/network, or point `KANEO_API_URL` at the real alias. Test inside the container: `wget -qO- http://kaneo:5173/api/health` |
 | `ENOENT … /run/secrets/kaneo_admin_token` | file variant without the host file | create it, or switch to `KANEO_ADMIN_TOKEN` |
 | Healthy, new users land nowhere | migrations skipped, or `KANEO_WORKSPACE_ID` points at another workspace | check for `migrations` in the log, run `node src/cli/migrate.ts` |
 | `400 Unknown role` in logs | `KANEO_WORKSPACE_ROLE` is not assignable there | use `viewer`/`member`/`admin` or a custom role |
 | Notification lost while the stack was down | no queue — by design | nothing; the next reconcile adds whoever is missing |
+| GitHub: *"The redirect_uri is not associated with this application"* | this is Kaneo's OAuth config, not the sidecar's | the OAuth App's one callback URL must equal the `redirect_uri` in GitHub's error URL — for the bundled image that is `origin(KANEO_CLIENT_URL) + /api/auth/callback/github`. Fix `KANEO_CLIENT_URL` in the **Kaneo** stack (public `https://` origin, no trailing slash), leave `KANEO_API_URL` unset so the entrypoint derives it, and register the exact URL in the OAuth App |

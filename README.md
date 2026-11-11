@@ -113,7 +113,7 @@ at once instead of failing on the first.
 container rather than a silent outage:
 
 ```bash
-curl -s localhost:8080/status | jq
+curl -s 127.0.0.1:8080/status | jq
 # { "healthy": true,
 #   "automations": [ { "name": "auto-join", "healthy": true,
 #                      "detail": { "listening": true, "authOk": true, "notified": 12,

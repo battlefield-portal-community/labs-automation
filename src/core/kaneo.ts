@@ -98,14 +98,23 @@ export class KaneoAdminClient {
   }
 
   async #request(path: string, init: RequestInit = {}): Promise<Response> {
-    const response = await this.#fetch(`${this.#apiUrl}${path}`, {
-      ...init,
-      headers: {
-        authorization: `Bearer ${this.#token}`,
-        "content-type": "application/json",
-        ...(init.headers ?? {}),
-      },
-    });
+    const url = `${this.#apiUrl}${path}`;
+    let response: Response;
+    try {
+      response = await this.#fetch(url, {
+        ...init,
+        headers: {
+          authorization: `Bearer ${this.#token}`,
+          "content-type": "application/json",
+          ...(init.headers ?? {}),
+        },
+      });
+    } catch (error) {
+      // Node's fetch only says "fetch failed"; the reason (ENOTFOUND,
+      // ECONNREFUSED, TLS) lives on error.cause. Surface it, plus the host that
+      // was tried, so a wrong service name or network is obvious from the log.
+      throw new Error(`cannot reach Kaneo at ${url}: ${describeFetchError(error)}`);
+    }
 
     if (response.status === 401 || response.status === 403) {
       throw new KaneoAuthError(response.status, await readDetail(response));
@@ -115,6 +124,19 @@ export class KaneoAdminClient {
     }
     return response;
   }
+}
+
+export function describeFetchError(error: unknown): string {
+  const cause = (error as {
+    cause?: { code?: string; message?: string; hostname?: string; address?: string; port?: number };
+  }).cause;
+
+  if (!cause) return error instanceof Error ? error.message : String(error);
+
+  const target = cause.hostname ?? cause.address;
+  const where = target ? ` at ${target}${cause.port ? `:${cause.port}` : ""}` : "";
+  const reason = cause.code ?? cause.message ?? "fetch error";
+  return `${reason}${where}`;
 }
 
 function isRetryable(status: number): boolean {
