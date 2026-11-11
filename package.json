@@ -1,0 +1,25 @@
+{
+  "name": "kaneo-labs-automation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sidecar image for Kaneo automations (auto-join, and whatever comes next).",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/index.ts",
+    "migrate": "node src/cli/migrate.ts",
+    "device-auth": "node src/cli/device-auth.ts",
+    "test": "node --test 'tests/**/*.test.ts'",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.8.3"
+  }
+}

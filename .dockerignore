@@ -1,0 +1,12 @@
+node_modules
+tests
+docs
+secrets
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+*.log
+*.md
+tsconfig.json

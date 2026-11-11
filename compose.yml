@@ -1,0 +1,45 @@
+# Service definition for the automation sidecar.
+#
+# Merge this into the compose file that already runs Kaneo (paste the `automations:`
+# block into its `services:`), or use it as-is from the same directory if your Kaneo
+# stack uses the names `kaneo` and `postgres`.
+#
+#   docker build -t kaneo-labs-automation:0.1.0 .
+#   docker compose run --rm automations node src/cli/migrate.ts
+#   docker compose up -d automations
+
+services:
+  automations:
+    # Build locally, or push the image and pin a digest.
+    build: .
+    image: kaneo-labs-automation:0.1.0
+    restart: unless-stopped
+
+    environment:
+      AUTOMATIONS: ${AUTOMATIONS:-auto-join}
+      KANEO_API_URL: ${KANEO_API_URL:-http://kaneo:5173/api}
+      KANEO_WORKSPACE_ID: ${KANEO_WORKSPACE_ID:?set KANEO_WORKSPACE_ID (see README)}
+      KANEO_WORKSPACE_ROLE: ${KANEO_WORKSPACE_ROLE:-member}
+      KANEO_ADMIN_TOKEN_FILE: /run/secrets/kaneo_admin_token
+      DATABASE_URL: postgres://${POSTGRES_USER:-kaneo}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-kaneo}
+      RECONCILE_INTERVAL_MIN: ${RECONCILE_INTERVAL_MIN:-10}
+      SKIP_INSTANCE_ADMINS: ${SKIP_INSTANCE_ADMINS:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      HEALTH_PORT: "8080"
+
+    volumes:
+      # Written by: docker run ... node src/cli/device-auth.ts /secrets/kaneo_admin_token
+      - ./secrets/kaneo_admin_token:/run/secrets/kaneo_admin_token:ro
+
+    # The healthcheck in the image reads HEALTH_PORT, so an expired token turns
+    # the container unhealthy instead of failing silently.
+    healthcheck:
+      test: ["CMD-SHELL", 'wget -q -O - "http://127.0.0.1:$${HEALTH_PORT:-8080}/healthz" >/dev/null 2>&1 || exit 1']
+      interval: 60s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+    depends_on:
+      postgres:
+        condition: service_healthy
